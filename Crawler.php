@@ -42,14 +42,14 @@ class Crawler extends CrawlerBase
         // Deprecated
     }
 
-    public function extractCodeForces($pcode, $url, $defaultDesc = "", $retries = 5)
+    public function extractCodeForces($pcode, $url, $retries = 5)
     {
         $failed = true;
         $status = false;
 
         foreach (range(1, $retries) as $tries) {
             try {
-                $status = $this->_extractCodeForces($pcode, $url, $defaultDesc);
+                $status = $this->_extractCodeForces($pcode, $url);
             } catch (Exception $e) {
                 Log::alert($e);
                 $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>{$e->getMessage()}</>\n");
@@ -86,7 +86,7 @@ class Crawler extends CrawlerBase
         return $url;
     }
 
-    private function _extractCodeForces($pcode, $url, $defaultDesc)
+    private function _extractCodeForces($pcode, $url)
     {
         $this->currentProblemCcode = $pcode;
         $this->imageIndex = 1;
@@ -117,7 +117,7 @@ class Crawler extends CrawlerBase
 
         if (stripos($contentType, "text/html") !== false) {
             $this->pro["file"] = 0;
-            $this->pro["file_url"] = '';
+            $this->pro["file_url"] = null;
 
             $problemDOM = HtmlDomParser::str_get_html($content, true, true, DEFAULT_TARGET_CHARSET, false);
 
