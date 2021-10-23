@@ -173,15 +173,17 @@ class Crawler extends CrawlerBase
                 $extension = "doc";
             } elseif (stripos($contentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document") !== false) {
                 $extension = "docx";
+            } else {
+                $extension = pathinfo($url, PATHINFO_EXTENSION);
             }
             $cacheDir = base_path("public/external/gym/$extension");
             if (!file_exists($cacheDir)) {
                 mkdir($cacheDir, 0755, true);
             }
-            file_put_contents(base_path("public/external/gym/pdf/$this->currentProblemCcode.$extension"), $content);
+            file_put_contents(base_path("public/external/gym/$extension/$this->currentProblemCcode.$extension"), $content);
             $this->pro["description"] = '';
             $this->pro["file"] = 1;
-            $this->pro["file_url"] = "/external/gym/pdf/$this->currentProblemCcode.$extension";
+            $this->pro["file_url"] = "/external/gym/$extension/$this->currentProblemCcode.$extension";
             $this->pro["sample"] = [];
         }
         return true;
