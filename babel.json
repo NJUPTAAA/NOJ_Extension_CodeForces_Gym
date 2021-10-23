@@ -17,7 +17,10 @@
         "submitter": "Submitter",
         "installer": "Installer"
     },
+    "namespace": {
+        "gym": "GYM*"
+    },
     "require": {
-        "NOJ": "^0.17.0"
+        "NOJ": "^0.17.3"
     }
 }
