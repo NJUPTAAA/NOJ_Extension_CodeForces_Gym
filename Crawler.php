@@ -15,7 +15,6 @@ class Crawler extends CrawlerBase
 {
     public $oid = null;
     public $prefix = "GYM";
-    private $con;
     private $currentProblemCcode;
     private $imageIndex;
 
@@ -67,97 +66,123 @@ class Crawler extends CrawlerBase
         return $status;
     }
 
+    private function getCodeForcesResponse($url)
+    {
+        return Requests::get($url, ['Referer' => 'https://codeforces.com'], [
+            'verify' => babel_path("Cookies/cacert.pem"),
+            'timeout' => 30
+        ]);
+    }
+
+    private function globalizeCodeForceURL($localizedURL)
+    {
+        if (strpos($localizedURL, '://') !== false) {
+            $url = $localizedURL;
+        } elseif ($localizedURL[0] == '/') {
+            $url = 'https://codeforces.com' . $localizedURL;
+        } else {
+            $url = 'https://codeforces.com/' . $localizedURL;
+        }
+        return $url;
+    }
+
     private function _extractCodeForces($pcode, $url, $defaultDesc)
     {
         $this->currentProblemCcode = $pcode;
         $this->imageIndex = 1;
-        $response = Requests::get($url, ['Referer' => 'https://codeforces.com'], [
-            'verify' => babel_path("Cookies/cacert.pem"),
-            'timeout' => 30
-        ]);
+
+        $response = $this->getCodeForcesResponse($url);
         $contentType = $response->headers['content-type'];
         $content = $response->body;
-        if (stripos($content, "<title>Codeforces</title>") === false) {
-            if (strpos($content, 'Statement is not available on English language') !== false) {
-                $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>Statement is not available on English.</>\n");
-                return false;
-            }
-            if (stripos($content, "<title>Attachments") !== false) {
-                $this->pro["description"] .= $defaultDesc;
-            } else {
-                if (stripos($contentType, "text/html") !== false) {
-                    $this->pro["file"] = 0;
-                    $this->pro["file_url"] = '';
 
-                    $problemDOM = HtmlDomParser::str_get_html($content, true, true, DEFAULT_TARGET_CHARSET, false);
+        if (stripos($content, "<title>Attachments") !== false) {
+            // refetching actual attachment
+            $attachmentDOM = HtmlDomParser::str_get_html($content, true, true, DEFAULT_TARGET_CHARSET, false);
+            $attachmentURL = $attachmentDOM->find('#pageContent div.datatable tbody tr a', 0)->href;
+            $url = $this->globalizeCodeForceURL($attachmentURL);
+            $response = $this->getCodeForcesResponse($url);
+            $contentType = $response->headers['content-type'];
+            $content = $response->body;
+        }
 
-                    $this->pro["input_type"] = $problemDOM->find('div.problem-statement div.header .input-file', 0)->find('text', -1)->plaintext;
-                    $this->pro["output_type"] = $problemDOM->find('div.problem-statement div.header .output-file', 0)->find('text', -1)->plaintext;
-
-                    $descriptionSpecificationDOM = $problemDOM->find('div.problem-statement', 0)->children(1);
-                    $this->pro["description"] = trim($descriptionSpecificationDOM->innertext);
-
-                    $inputSpecificationDOM = $problemDOM->find('div.problem-statement div.input-specification', 0);
-                    if (filled($inputSpecificationDOM)) {
-                        $inputSpecificationDOM->find('div.section-title', 0)->outertext = '';
-                        $this->pro["input"] = trim($inputSpecificationDOM->innertext);
-                    }
-
-                    $outputSpecificationDOM = $problemDOM->find('div.problem-statement div.output-specification', 0);
-                    if (filled($outputSpecificationDOM)) {
-                        $outputSpecificationDOM->find('div.section-title', 0)->outertext = '';
-                        $this->pro["output"] = trim($outputSpecificationDOM->innertext);
-                    }
-
-                    $noteDOM = $problemDOM->find('div.problem-statement div.note', 0);
-                    if(filled($noteDOM)) {
-                        $noteDOM->find('div.section-title', 0)->outertext = '';
-                        $this->pro["note"] = trim($noteDOM->innertext);
-                    }
-
-                    $sampleTestsDOM = $problemDOM->find('div.problem-statement div.sample-tests', 0);
-                    $sampleTestsDOM->find('div.section-title', 0)->outertext = '';
-
-                    if (filled($sampleTestsDOM)) {
-                        $sampleCount = intval(count($sampleTestsDOM->find('pre')) / 2);
-                        $samples = [];
-                        for ($i = 0; $i < $sampleCount; $i++) {
-                            $sampleInput = $sampleTestsDOM->find('pre')[$i * 2]->innertext;
-                            $sampleOutput = $sampleTestsDOM->find('pre')[$i * 2 + 1]->innertext;
-                            array_push($samples, [
-                                "sample_input" => $sampleInput,
-                                "sample_output" => $sampleOutput
-                            ]);
-                        }
-                        $this->pro["sample"] = $samples;
-                    }
-
-                    $this->pro["note"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["note"], true, true, DEFAULT_TARGET_CHARSET, false));
-                    $this->pro["description"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["description"], true, true, DEFAULT_TARGET_CHARSET, false));
-                    $this->pro["input"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["input"], true, true, DEFAULT_TARGET_CHARSET, false));
-                    $this->pro["output"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["output"], true, true, DEFAULT_TARGET_CHARSET, false));
-                } else {
-                    if (stripos($contentType, "application/pdf") !== false) {
-                        $extension = "pdf";
-                    } elseif (stripos($contentType, "application/msword") !== false) {
-                        $extension = "doc";
-                    } elseif (stripos($contentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document") !== false) {
-                        $extension = "docx";
-                    }
-                    $cacheDir = base_path("public/external/gym/$extension");
-                    if (!file_exists($cacheDir)) {
-                        mkdir($cacheDir, 0755, true);
-                    }
-                    file_put_contents(base_path("public/external/gym/pdf/$this->currentProblemCcode.$extension"), $content);
-                    $this->pro["description"] = '';
-                    $this->pro["file"] = 1;
-                    $this->pro["file_url"] = "/external/gym/pdf/$this->currentProblemCcode.$extension";
-                    $this->pro["sample"] = [];
-                }
-            }
-        } else {
+        if (stripos($content, "<title>Codeforces</title>") !== false) {
             $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>Problem not found.</>\n");
             return false;
+        }
+
+        if (strpos($content, 'Statement is not available on English language') !== false) {
+            $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>Statement is not available on English.</>\n");
+            return false;
+        }
+
+        if (stripos($contentType, "text/html") !== false) {
+            $this->pro["file"] = 0;
+            $this->pro["file_url"] = '';
+
+            $problemDOM = HtmlDomParser::str_get_html($content, true, true, DEFAULT_TARGET_CHARSET, false);
+
+            $this->pro["input_type"] = $problemDOM->find('div.problem-statement div.header .input-file', 0)->find('text', -1)->plaintext;
+            $this->pro["output_type"] = $problemDOM->find('div.problem-statement div.header .output-file', 0)->find('text', -1)->plaintext;
+
+            $descriptionSpecificationDOM = $problemDOM->find('div.problem-statement', 0)->children(1);
+            $this->pro["description"] = trim($descriptionSpecificationDOM->innertext);
+
+            $inputSpecificationDOM = $problemDOM->find('div.problem-statement div.input-specification', 0);
+            if (filled($inputSpecificationDOM)) {
+                $inputSpecificationDOM->find('div.section-title', 0)->outertext = '';
+                $this->pro["input"] = trim($inputSpecificationDOM->innertext);
+            }
+
+            $outputSpecificationDOM = $problemDOM->find('div.problem-statement div.output-specification', 0);
+            if (filled($outputSpecificationDOM)) {
+                $outputSpecificationDOM->find('div.section-title', 0)->outertext = '';
+                $this->pro["output"] = trim($outputSpecificationDOM->innertext);
+            }
+
+            $noteDOM = $problemDOM->find('div.problem-statement div.note', 0);
+            if(filled($noteDOM)) {
+                $noteDOM->find('div.section-title', 0)->outertext = '';
+                $this->pro["note"] = trim($noteDOM->innertext);
+            }
+
+            $sampleTestsDOM = $problemDOM->find('div.problem-statement div.sample-tests', 0);
+            $sampleTestsDOM->find('div.section-title', 0)->outertext = '';
+
+            if (filled($sampleTestsDOM)) {
+                $sampleCount = intval(count($sampleTestsDOM->find('pre')) / 2);
+                $samples = [];
+                for ($i = 0; $i < $sampleCount; $i++) {
+                    $sampleInput = $sampleTestsDOM->find('pre')[$i * 2]->innertext;
+                    $sampleOutput = $sampleTestsDOM->find('pre')[$i * 2 + 1]->innertext;
+                    array_push($samples, [
+                        "sample_input" => $sampleInput,
+                        "sample_output" => $sampleOutput
+                    ]);
+                }
+                $this->pro["sample"] = $samples;
+            }
+
+            $this->pro["note"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["note"], true, true, DEFAULT_TARGET_CHARSET, false));
+            $this->pro["description"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["description"], true, true, DEFAULT_TARGET_CHARSET, false));
+            $this->pro["input"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["input"], true, true, DEFAULT_TARGET_CHARSET, false));
+            $this->pro["output"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["output"], true, true, DEFAULT_TARGET_CHARSET, false));
+        } else {
+            if (stripos($contentType, "application/pdf") !== false) {
+                $extension = "pdf";
+            } elseif (stripos($contentType, "application/msword") !== false) {
+                $extension = "doc";
+            } elseif (stripos($contentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document") !== false) {
+                $extension = "docx";
+            }
+            $cacheDir = base_path("public/external/gym/$extension");
+            if (!file_exists($cacheDir)) {
+                mkdir($cacheDir, 0755, true);
+            }
+            file_put_contents(base_path("public/external/gym/pdf/$this->currentProblemCcode.$extension"), $content);
+            $this->pro["description"] = '';
+            $this->pro["file"] = 1;
+            $this->pro["file_url"] = "/external/gym/pdf/$this->currentProblemCcode.$extension";
+            $this->pro["sample"] = [];
         }
         return true;
     }
@@ -167,17 +192,8 @@ class Crawler extends CrawlerBase
         if (!$dom) return null;
         foreach ($dom->find('img') as $imageElement) {
             $imageURL = $imageElement->src;
-            if (strpos($imageURL, '://') !== false) {
-                $url = $imageURL;
-            } elseif ($imageURL[0] == '/') {
-                $url = 'https://codeforces.com' . $imageURL;
-            } else {
-                $url = 'https://codeforces.com/' . $imageURL;
-            }
-            $imageResponse = Requests::get($url, ['Referer' => 'https://codeforces.com'], [
-                'verify' => babel_path("Cookies/cacert.pem"),
-                'timeout' => 30
-            ]);
+            $url = $this->globalizeCodeForceURL($imageURL);
+            $imageResponse = $this->getCodeForcesResponse($url);
             $extensions = ['image/jpeg' => '.jpg', 'image/png' => '.png', 'image/gif' => '.gif', 'image/bmp' => '.bmp'];
             if (isset($imageResponse->headers['content-type'])) {
                 $extension = $extensions[$imageResponse->headers['content-type']];
@@ -200,10 +216,7 @@ class Crawler extends CrawlerBase
         if ($cached) {
             $response = file_get_contents(__DIR__ . "/contest.list");
         } else {
-            $response = Requests::get('https://codeforces.com/api/contest.list?gym=true', ['Referer' => 'https://codeforces.com'], [
-                'verify' => babel_path("Cookies/cacert.pem"),
-                'timeout' => 30
-            ])->body;
+            $response = $this->getCodeForcesResponse('https://codeforces.com/api/contest.list?gym=true')->body;
             file_put_contents(__DIR__ . "/contest.list", $response);
         }
         return $response;
@@ -214,10 +227,7 @@ class Crawler extends CrawlerBase
         $contestID = $contest['id'];
         $problems = [];
         $targetURL = "https://codeforces.com/gym/$contestID";
-        $response = Requests::get($targetURL, ['Referer' => 'https://codeforces.com'], [
-            'verify' => babel_path("Cookies/cacert.pem"),
-            'timeout' => 30
-        ]);
+        $response = $this->getCodeForcesResponse($targetURL);
         if ($response->status_code != 200) {
             throw new Exception("Contest page returned status code $response->status_code.");
         }
