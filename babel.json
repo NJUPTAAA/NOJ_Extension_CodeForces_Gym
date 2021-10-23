@@ -1,23 +1,23 @@
 {
-    "name":"Template",
-    "code":"template",
-    "icon":"resources/template@2x.png",
-    "type":"virtual-judge",
-    "description": "Template of Interface for NOJ",
+    "name": "CodeForces Gym",
+    "code": "gym",
+    "icon": "resources/gym@2x.png",
+    "type": "virtual-judge",
+    "description": "CodeForces Gym Interface for NOJ",
     "license": "MIT",
-    "repository":"https://github.com/NJUPTAAA/NOJ_Extension_Babel_Template",
-    "version":"0.0.1",
-    "website":"https://acm.njupt.edu.cn/",
-    "custom":{
-        "css":"resources/custom.css"
+    "repository": "https://github.com/NJUPTAAA/NOJ_Extension_Babel_Gym",
+    "version": "0.1.0",
+    "website": "https://codeforces.com/gyms",
+    "custom": {
+        "css": "resources/custom.css"
     },
-    "provider":{
-        "judger":"Judger",
-        "crawler":"Crawler",
-        "submitter":"Submitter",
-        "installer":"Installer"
+    "provider": {
+        "judger": "Judger",
+        "crawler": "Crawler",
+        "submitter": "Submitter",
+        "installer": "Installer"
     },
-    "require":{
-        "NOJ":"0.3.2"
+    "require": {
+        "NOJ": "^0.17.0"
     }
 }
