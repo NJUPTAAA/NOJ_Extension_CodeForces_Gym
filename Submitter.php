@@ -1,101 +1,146 @@
 <?php
-namespace App\Babel\Extension\template;//The 'template' should be replaced by the real oj code.
+
+namespace App\Babel\Extension\gym;
 
 use App\Babel\Submit\Curl;
-use App\Models\CompilerModel;
 use App\Models\JudgerModel;
 use App\Models\OJModel;
+use App\Models\Submission\SubmissionModel;
 use Illuminate\Support\Facades\Validator;
 use Requests;
+use Exception;
 
 class Submitter extends Curl
 {
     protected $sub;
-    public $post_data=[];
+    public $post_data = [];
     protected $oid;
     protected $selectedJudger;
 
-    public function __construct(& $sub, $all_data)
+    public function __construct(&$sub, $all_data)
     {
-        $this->sub=& $sub;
-        $this->post_data=$all_data;
-        $judger=new JudgerModel();
-        $this->oid=OJModel::oid('template');//The 'template' should be replaced by the real oj code.
-        if(is_null($this->oid)) {
+        $this->sub = &$sub;
+        $this->post_data = $all_data;
+        $judger = new JudgerModel();
+        $this->oid = OJModel::oid('gym');
+        if (is_null($this->oid)) {
             throw new Exception("Online Judge Not Found");
         }
-        $judger_list=$judger->list($this->oid);
-        $this->selectedJudger=$judger_list[array_rand($judger_list)];
+        $judger_list = $judger->list($this->oid);
+        $this->selectedJudger = $judger_list[array_rand($judger_list)];
     }
 
     private function _login()
     {
-        $response=$this->grab_page([
-            "site"=>'http://poj.org',
-            "oj"=>'poj',
-            "handle"=>$this->selectedJudger["handle"]
+        $response = $this->grab_page([
+            'site' => 'https://codeforces.com',
+            'oj' => 'codeforces',
+            'handle' => $this->selectedJudger["handle"],
         ]);
-        if (strpos($response, 'Log Out')===false) {
-            $params=[
-                'user_id1' => $this->selectedJudger["handle"],
-                'password1' => $this->selectedJudger["password"],
-                'B1' => 'login',
+        if (!(strpos($response, 'Logout') !== false)) {
+            $response = $this->grab_page([
+                'site' => 'https://codeforces.com/enter',
+                'oj' => 'codeforces',
+                'handle' => $this->selectedJudger["handle"],
+            ]);
+
+            $exploded = explode("name='csrf_token' value='", $response);
+            $token = explode("'/>", $exploded[2])[0];
+
+            $params = [
+                'csrf_token' => $token,
+                'action' => 'enter',
+                'ftaa' => '',
+                'bfaa' => '',
+                'handleOrEmail' => $this->selectedJudger["handle"],
+                'password' => $this->selectedJudger["password"],
+                'remember' => true,
             ];
+
             $this->login([
-                "url"=>'http://poj.org/login',
-                "data"=>http_build_query($params),
-                "oj"=>'poj',
-                "ret"=>true,
-                "handle"=>$this->selectedJudger["handle"]
+                'url' => 'https://codeforces.com/enter',
+                'data' => http_build_query($params),
+                'oj' => 'codeforces',
+                'handle' => $this->selectedJudger["handle"],
             ]);
         }
     }
 
     private function _submit()
     {
-        $params=[
-            'problem_id' => $this->post_data['iid'],
-            'language' => $this->post_data['lang'],
-            'source' => base64_encode($this->post_data["solution"]),
-            'encoded' => 1, // Optional, but sometimes base64 seems smaller than url encode
-        ];
+        $submissionModel = new SubmissionModel();
+        $s_num = $submissionModel->countSolution($this->post_data["solution"]);
+        $space = '';
+        for ($i = 0; $i < $s_num; $i++) {
+            $space .= ' ';
+        }
+        $contestId = $this->post_data["cid"];
+        $submittedProblemIndex = $this->post_data["iid"];
+        $programTypeId = $this->post_data["lang"];
+        $source = ($this->post_data["solution"] . $space . chr(10));
 
-        $response=$this->post_data([
-            "site"=>"http://poj.org/submit",
-            "data"=>http_build_query($params),
-            "oj"=>"poj",
-            "ret"=>true,
-            "follow"=>false,
-            "returnHeader"=>true,
-            "postJson"=>false,
-            "extraHeaders"=>[],
-            "handle"=>$this->selectedJudger["handle"]
+
+        $response = $this->grab_page([
+            'site' => "https://codeforces.com/gym/$contestId/submit",
+            'oj' => "codeforces",
+            'handle' => $this->selectedJudger["handle"],
         ]);
 
-        if (!preg_match('/Location: .*\/status/', $response, $match)) {
-            $this->sub['verdict']='Submission Error';
-        } else {
-            $res=Requests::get('http://poj.org/status?problem_id='.$this->post_data['iid'].'&user_id='.urlencode($this->selectedJudger["handle"]));
-            if (!preg_match('/<tr align=center><td>(\d+)<\/td>/', $res->body, $match)) {
-                $this->sub['verdict']='Submission Error';
+        $exploded = explode("name='csrf_token' value='", $response);
+        $token = explode("'/>", $exploded[2])[0];
+
+        $params = [
+            'csrf_token' => $token,
+            'action' => 'submitSolutionFormSubmitted',
+            'ftaa' => '',
+            'bfaa' => '',
+            'submittedProblemIndex' => $submittedProblemIndex,
+            'programTypeId' => $programTypeId,
+            'source' => $source,
+            'tabSize' => 4,
+            'sourceFile' => '',
+        ];
+        $response = $this->post_data([
+            'site' => "https://codeforces.com/gym/$contestId/submit?csrf_token=" . $token,
+            'data' => http_build_query($params),
+            'oj' => "codeforces",
+            'ret' => true,
+            'returnHeader' => true,
+            'handle' => $this->selectedJudger["handle"],
+        ]);
+        $this->sub["jid"] = $this->selectedJudger["jid"];
+        if (strpos($response, 'alert("Source code hasn\'t submitted because of warning, please read it.");') !== false) {
+            $this->sub['verdict'] = 'Compile Error';
+            preg_match('/<div class="roundbox " style="font-size:1.2rem;margin:0.5em 0;padding:0.5em;text-align:left;background-color:#eca;">[\s\S]*?<div class="roundbox-rb">&nbsp;<\/div>([\s\S]*?)<div/', $response, $match);
+            $warning = str_replace('Press button to submit the solution.', '', $match[1]);
+            $this->sub['compile_info'] = trim($warning);
+        } elseif (substr_count($response, 'My Submissions') != 2) {
+            // Forbidden?
+            $exploded = explode('<span class="error for__source">', $response);
+            if (!isset($exploded[1])) {
+                $this->sub['verdict'] = "Submission Error";
             } else {
-                $this->sub['remote_id']=$match[1];
-                $this->sub['jid']=$this->selectedJudger['jid'];
+                $this->sub['compile_info'] = explode("</span>", $exploded[1])[0];
+                $this->sub['verdict'] = "Compile Error";
             }
+        } else {
+            preg_match('/submissionId="(\d+)"/', $response, $match);
+            $this->sub['remote_id'] = $match[1];
         }
     }
 
     public function submit()
     {
-        $validator=Validator::make($this->post_data, [
+        $validator = Validator::make($this->post_data, [
             'pid' => 'required|integer',
+            'cid' => 'required|integer',
             'coid' => 'required|integer',
-            'iid' => 'required|integer',
+            'iid' => 'required',
             'solution' => 'required',
         ]);
 
         if ($validator->fails()) {
-            $this->sub['verdict']="System Error";
+            $this->sub['verdict'] = "System Error";
             return;
         }
 
