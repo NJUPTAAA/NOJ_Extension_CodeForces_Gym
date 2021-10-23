@@ -74,7 +74,7 @@ class Crawler extends CrawlerBase
         ]);
     }
 
-    private function globalizeCodeForceURL($localizedURL)
+    private function globalizeCodeForcesURL($localizedURL)
     {
         if (strpos($localizedURL, '://') !== false) {
             $url = $localizedURL;
@@ -99,7 +99,7 @@ class Crawler extends CrawlerBase
             // refetching actual attachment
             $attachmentDOM = HtmlDomParser::str_get_html($content, true, true, DEFAULT_TARGET_CHARSET, false);
             $attachmentURL = $attachmentDOM->find('#pageContent div.datatable tbody tr a', 0)->href;
-            $url = $this->globalizeCodeForceURL($attachmentURL);
+            $url = $this->globalizeCodeForcesURL($attachmentURL);
             $response = $this->getCodeForcesResponse($url);
             $contentType = $response->headers['content-type'];
             $content = $response->body;
@@ -194,7 +194,7 @@ class Crawler extends CrawlerBase
         if (!$dom) return null;
         foreach ($dom->find('img') as $imageElement) {
             $imageURL = $imageElement->src;
-            $url = $this->globalizeCodeForceURL($imageURL);
+            $url = $this->globalizeCodeForcesURL($imageURL);
             $imageResponse = $this->getCodeForcesResponse($url);
             $extensions = ['image/jpeg' => '.jpg', 'image/png' => '.png', 'image/gif' => '.gif', 'image/bmp' => '.bmp'];
             if (isset($imageResponse->headers['content-type'])) {
