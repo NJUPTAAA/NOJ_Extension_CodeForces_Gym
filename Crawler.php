@@ -16,6 +16,7 @@ class Crawler extends CrawlerBase
     public $oid = null;
     public $prefix = "GYM";
     private $con;
+    private $currentProblemCcode;
     private $imageIndex;
 
     public function start($conf)
@@ -42,14 +43,14 @@ class Crawler extends CrawlerBase
         // Deprecated
     }
 
-    public function extractCodeForces($cid, $num, $url, $defaultDesc = "", $retries = 5)
+    public function extractCodeForces($pcode, $url, $defaultDesc = "", $retries = 5)
     {
         $failed = true;
         $status = false;
 
         foreach (range(1, $retries) as $tries) {
             try {
-                $status = $this->_extractCodeForces($cid, $num, $url, $defaultDesc);
+                $status = $this->_extractCodeForces($pcode, $url, $defaultDesc);
             } catch (Exception $e) {
                 Log::alert($e);
                 $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>{$e->getMessage()}</>\n");
@@ -66,10 +67,9 @@ class Crawler extends CrawlerBase
         return $status;
     }
 
-    private function _extractCodeForces($cid, $num, $url, $defaultDesc)
+    private function _extractCodeForces($pcode, $url, $defaultDesc)
     {
-        $pid = $cid . $num;
-        $this->con = $pid;
+        $this->currentProblemCcode = $pcode;
         $this->imageIndex = 1;
         $response = Requests::get($url, ['Referer' => 'https://codeforces.com'], [
             'verify' => babel_path("Cookies/cacert.pem"),
@@ -91,40 +91,39 @@ class Crawler extends CrawlerBase
 
                     $problemDOM = HtmlDomParser::str_get_html($content, true, true, DEFAULT_TARGET_CHARSET, false);
 
-                    $first_step = explode('<div class="input-file"><div class="property-title">input</div>', $content);
-                    $second_step = explode("</div>", $first_step[1]);
-                    $this->pro["input_type"] = $second_step[0];
-                    $first_step = explode('<div class="output-file"><div class="property-title">output</div>', $content);
-                    $second_step = explode("</div>", $first_step[1]);
-                    $this->pro["output_type"] = $second_step[0];
+                    $this->pro["input_type"] = $problemDOM->find('div.problem-statement div.header .input-file', 0)->find('text', -1)->plaintext;
+                    $this->pro["output_type"] = $problemDOM->find('div.problem-statement div.header .output-file', 0)->find('text', -1)->plaintext;
 
-                    if (preg_match("/output<\\/div>.*<div>(.*)<\\/div>/sU", $content, $matches)) {
-                        $this->pro["description"] .= str_replace('$$$$$$', '$$', trim(($matches[1])));
+                    $descriptionSpecificationDOM = $problemDOM->find('div.problem-statement', 0)->children(1);
+                    $this->pro["description"] = trim($descriptionSpecificationDOM->innertext);
+
+                    $inputSpecificationDOM = $problemDOM->find('div.problem-statement div.input-specification', 0);
+                    if (filled($inputSpecificationDOM)) {
+                        $inputSpecificationDOM->find('div.section-title', 0)->outertext = '';
+                        $this->pro["input"] = trim($inputSpecificationDOM->innertext);
                     }
 
-                    if (preg_match("/Input<\\/div>(.*)<\\/div>/sU", $content, $matches)) {
-                        $this->pro["input"] = str_replace('$$$$$$', '$$', trim($matches[1]));
+                    $outputSpecificationDOM = $problemDOM->find('div.problem-statement div.output-specification', 0);
+                    if (filled($outputSpecificationDOM)) {
+                        $outputSpecificationDOM->find('div.section-title', 0)->outertext = '';
+                        $this->pro["output"] = trim($outputSpecificationDOM->innertext);
                     }
 
-                    if (preg_match("/Output<\\/div>(.*)<\\/div>/sU", $content, $matches)) {
-                        $this->pro["output"] = str_replace('$$$$$$', '$$', trim($matches[1]));
+                    $noteDOM = $problemDOM->find('div.problem-statement div.note', 0);
+                    if(filled($noteDOM)) {
+                        $noteDOM->find('div.section-title', 0)->outertext = '';
+                        $this->pro["note"] = trim($noteDOM->innertext);
                     }
 
-                    if (strpos($content, '<div class="sample-test">') !== false) {
-                        $temp_sample = explode('<div class="sample-test">', $content)[1];
-                        if (!(strpos($content, '<div class="note">') !== false)) {
-                            $temp_sample = explode('<script type="text/javascript">', $temp_sample)[0];
-                        } else {
-                            $temp_sample = explode('<div class="note">', $temp_sample)[0];
-                        }
+                    $sampleTestsDOM = $problemDOM->find('div.problem-statement div.sample-tests', 0);
+                    $sampleTestsDOM->find('div.section-title', 0)->outertext = '';
 
-                        $sampleListDOM = HtmlDomParser::str_get_html($temp_sample, true, true, DEFAULT_TARGET_CHARSET, false);
-                        $sampleCount = intval(count($sampleListDOM->find('pre')) / 2);
-
+                    if (filled($sampleTestsDOM)) {
+                        $sampleCount = intval(count($sampleTestsDOM->find('pre')) / 2);
                         $samples = [];
                         for ($i = 0; $i < $sampleCount; $i++) {
-                            $sampleInput = $sampleListDOM->find('pre')[$i * 2]->innertext;
-                            $sampleOutput = $sampleListDOM->find('pre')[$i * 2 + 1]->innertext;
+                            $sampleInput = $sampleTestsDOM->find('pre')[$i * 2]->innertext;
+                            $sampleOutput = $sampleTestsDOM->find('pre')[$i * 2 + 1]->innertext;
                             array_push($samples, [
                                 "sample_input" => $sampleInput,
                                 "sample_output" => $sampleOutput
@@ -133,30 +132,26 @@ class Crawler extends CrawlerBase
                         $this->pro["sample"] = $samples;
                     }
 
-                    if (preg_match("/Note<\\/div>(.*)<\\/div><\\/div>/sU", $content, $matches)) {
-                        $this->pro["note"] = trim(($matches[1]));
-                        $this->pro["note"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["note"], true, true, DEFAULT_TARGET_CHARSET, false));
-                    }
-
+                    $this->pro["note"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["note"], true, true, DEFAULT_TARGET_CHARSET, false));
                     $this->pro["description"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["description"], true, true, DEFAULT_TARGET_CHARSET, false));
                     $this->pro["input"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["input"], true, true, DEFAULT_TARGET_CHARSET, false));
                     $this->pro["output"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["output"], true, true, DEFAULT_TARGET_CHARSET, false));
                 } else {
                     if (stripos($contentType, "application/pdf") !== false) {
-                        $ext = "pdf";
+                        $extension = "pdf";
                     } elseif (stripos($contentType, "application/msword") !== false) {
-                        $ext = "doc";
+                        $extension = "doc";
                     } elseif (stripos($contentType, "application/vnd.openxmlformats-officedocument.wordprocessingml.document") !== false) {
-                        $ext = "docx";
+                        $extension = "docx";
                     }
-                    $dir = base_path("public/external/gym/pdf");
-                    if (!file_exists($dir)) {
-                        mkdir($dir, 0755, true);
+                    $cacheDir = base_path("public/external/gym/$extension");
+                    if (!file_exists($cacheDir)) {
+                        mkdir($cacheDir, 0755, true);
                     }
-                    file_put_contents(base_path("public/external/gym/pdf/$cid$num.$ext"), $content);
+                    file_put_contents(base_path("public/external/gym/pdf/$this->currentProblemCcode.$extension"), $content);
                     $this->pro["description"] = '';
                     $this->pro["file"] = 1;
-                    $this->pro["file_url"] = "/external/gym/pdf/$cid$num.$ext";
+                    $this->pro["file_url"] = "/external/gym/pdf/$this->currentProblemCcode.$extension";
                     $this->pro["sample"] = [];
                 }
             }
@@ -169,38 +164,33 @@ class Crawler extends CrawlerBase
 
     private function cacheImage($dom)
     {
-        if (!$dom) return $dom;
-        foreach ($dom->find('img') as $ele) {
-            $src = $ele->src;
-            if (strpos($src, '://') !== false) {
-                $url = $src;
-            } elseif ($src[0] == '/') {
-                $url = 'https://codeforces.com' . $src;
+        if (!$dom) return null;
+        foreach ($dom->find('img') as $imageElement) {
+            $imageURL = $imageElement->src;
+            if (strpos($imageURL, '://') !== false) {
+                $url = $imageURL;
+            } elseif ($imageURL[0] == '/') {
+                $url = 'https://codeforces.com' . $imageURL;
             } else {
-                $url = 'https://codeforces.com/' . $src;
+                $url = 'https://codeforces.com/' . $imageURL;
             }
-            $res = Requests::get($url, ['Referer' => 'https://codeforces.com'], [
+            $imageResponse = Requests::get($url, ['Referer' => 'https://codeforces.com'], [
                 'verify' => babel_path("Cookies/cacert.pem"),
                 'timeout' => 30
             ]);
-            $ext = ['image/jpeg' => '.jpg', 'image/png' => '.png', 'image/gif' => '.gif', 'image/bmp' => '.bmp'];
-            if (isset($res->headers['content-type'])) {
-                $cext = $ext[$res->headers['content-type']];
+            $extensions = ['image/jpeg' => '.jpg', 'image/png' => '.png', 'image/gif' => '.gif', 'image/bmp' => '.bmp'];
+            if (isset($imageResponse->headers['content-type'])) {
+                $extension = $extensions[$imageResponse->headers['content-type']];
             } else {
-                $pos = strpos($ele->src, '.');
-                if ($pos === false) {
-                    $cext = '';
-                } else {
-                    $cext = substr($ele->src, $pos);
-                }
+                $extension = pathinfo($imageElement->src, PATHINFO_EXTENSION);
             }
-            $fn = $this->con . '_' . ($this->imageIndex++) . $cext;
-            $dir = base_path("public/external/gym/img");
-            if (!file_exists($dir)) {
-                mkdir($dir, 0755, true);
+            $cachedImageName = $this->currentProblemCcode . '_' . ($this->imageIndex++) . $extension;
+            $cacheDir = base_path("public/external/gym/img");
+            if (!file_exists($cacheDir)) {
+                mkdir($cacheDir, 0755, true);
             }
-            file_put_contents(base_path("public/external/gym/img/$fn"), $res->body);
-            $ele->src = '/external/gym/img/' . $fn;
+            file_put_contents(base_path("public/external/gym/img/$cachedImageName"), $imageResponse->body);
+            $imageElement->src = '/external/gym/img/' . $cachedImageName;
         }
         return $dom;
     }
@@ -287,8 +277,10 @@ class Crawler extends CrawlerBase
                 continue;
             }
             $this->line("  <fg=yellow>$startingMessage: </>$pcode");
-            $this->crawlProblem($problem);
-            $this->line("  <fg=green>$endingMessage:  </>$pcode");
+            $status = $this->crawlProblem($problem);
+            if($status) {
+                $this->line("  <fg=green>$endingMessage:  </>$pcode");
+            }
         }
     }
 
@@ -332,7 +324,7 @@ class Crawler extends CrawlerBase
     private function resetProblem()
     {
         foreach ($this->pro as $x => $y) {
-            $this->pro[$x] = '';
+            $this->pro[$x] = null;
         }
     }
 
@@ -356,7 +348,7 @@ class Crawler extends CrawlerBase
         $this->pro['partial'] = 0;
         $this->pro['markdown'] = 0;
 
-        if (!$this->extractCodeForces($this->pro['contest_id'], $this->pro['index_id'], $this->pro['origin'])) {
+        if (!$this->extractCodeForces($this->pro['pcode'], $this->pro['origin'])) {
             return false;
         }
 
