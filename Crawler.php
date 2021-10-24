@@ -92,6 +92,12 @@ class Crawler extends CrawlerBase
         $this->currentProblemCcode = $pcode;
         $this->imageIndex = 1;
 
+        $this->pro["input"] = null;
+        $this->pro["output"] = null;
+        $this->pro["note"] = null;
+        $this->pro["sample"] = null;
+        $this->pro["description"] = null;
+
         $response = $this->getCodeForcesResponse($url);
         $contentType = $response->headers['content-type'];
         $content = $response->body;
@@ -167,7 +173,15 @@ class Crawler extends CrawlerBase
             }
 
             $descriptionSpecificationDOM = $problemDOM->find('div.problem-statement', 0);
-            $this->pro["description"] = trim($descriptionSpecificationDOM->innertext);
+
+            if(filled(trim(HtmlDomParser::str_get_html($descriptionSpecificationDOM->innertext, true, true, DEFAULT_TARGET_CHARSET, false)->plaintext))) {
+                $this->pro["description"] = trim($descriptionSpecificationDOM->innertext);
+            }
+
+            if($this->pro["note"] == $this->pro["description"] && $this->pro["description"] == $this->pro["input"] && $this->pro["input"] == $this->pro["output"] && $this->pro["output"] == null) {
+                $contestID = $this->pro['contest_id'];
+                return $this->_extractCodeForces($pcode, "https://codeforces.com/gym/$contestID/attachments");
+            }
 
             $this->pro["note"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["note"], true, true, DEFAULT_TARGET_CHARSET, false));
             $this->pro["description"] = $this->cacheImage(HtmlDomParser::str_get_html($this->pro["description"], true, true, DEFAULT_TARGET_CHARSET, false));
