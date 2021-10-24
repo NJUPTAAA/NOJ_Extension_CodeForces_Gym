@@ -10,6 +10,7 @@ use KubAT\PhpSimple\HtmlDomParser;
 use Requests;
 use Exception;
 use Log;
+use Throwable;
 
 class Crawler extends CrawlerBase
 {
@@ -50,7 +51,7 @@ class Crawler extends CrawlerBase
         foreach (range(1, $retries) as $tries) {
             try {
                 $status = $this->_extractCodeForces($pcode, $url);
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 Log::alert($e);
                 $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>{$e->getMessage()}</>\n");
                 continue;
@@ -148,9 +149,9 @@ class Crawler extends CrawlerBase
             }
 
             $sampleTestsDOM = $problemDOM->find('div.problem-statement div.sample-tests', 0);
-            $sampleTestsDOM->find('div.section-title', 0)->outertext = '';
 
             if (filled($sampleTestsDOM)) {
+                $sampleTestsDOM->find('div.section-title', 0)->outertext = '';
                 $sampleCount = intval(count($sampleTestsDOM->find('pre')) / 2);
                 $samples = [];
                 for ($i = 0; $i < $sampleCount; $i++) {
@@ -276,7 +277,7 @@ class Crawler extends CrawlerBase
         foreach (range(1, 5) as $tries) {
             try {
                 $problems = $this->getContestProblems($contest, $incremental);
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 Log::alert($e);
                 $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>{$e->getMessage()}</>\n");
                 continue;
@@ -310,7 +311,7 @@ class Crawler extends CrawlerBase
             if ($contestList["status"] != "OK") {
                 throw new Exception("Contest list status not OK.");
             }
-        } catch (Exception $e) {
+        } catch (Throwable $e) {
             throw new Exception('Failed fetching problem set.');
         }
 
