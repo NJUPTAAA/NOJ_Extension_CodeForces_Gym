@@ -387,6 +387,9 @@ class Crawler extends CrawlerBase
         $this->pro['time_limit'] = $problem['timeLimit'];
         $this->pro['memory_limit'] = $problem['memoryLimit'];
         $this->pro['title'] = $problem['title'];
+        if(blank($this->pro['title'])) {
+            $this->pro['title'] = $problem['pcode'];
+        }
         $this->pro['solved_count'] = -1;
         $this->pro['pcode'] = $problem['pcode'];
         $this->pro['index_id'] = $problem['ncode'];
