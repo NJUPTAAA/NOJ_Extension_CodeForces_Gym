@@ -5,7 +5,7 @@
     "type": "virtual-judge",
     "description": "CodeForces Gym Interface for NOJ",
     "license": "MIT",
-    "repository": "https://github.com/NJUPTAAA/NOJ_Extension_Babel_Gym",
+    "repository": "https://github.com/NJUPTAAA/NOJ_Extension_CodeForces_Gym",
     "version": "0.1.5",
     "website": "https://codeforces.com/gyms",
     "custom": {
