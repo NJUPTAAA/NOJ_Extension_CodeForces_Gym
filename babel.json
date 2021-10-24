@@ -6,7 +6,7 @@
     "description": "CodeForces Gym Interface for NOJ",
     "license": "MIT",
     "repository": "https://github.com/NJUPTAAA/NOJ_Extension_Babel_Gym",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "website": "https://codeforces.com/gyms",
     "custom": {
         "css": "resources/custom.css"

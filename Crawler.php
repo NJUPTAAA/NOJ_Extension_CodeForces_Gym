@@ -104,8 +104,23 @@ class Crawler extends CrawlerBase
 
         if (stripos($content, "<title>Attachments") !== false) {
             // refetching actual attachment
-            $attachmentDOM = HtmlDomParser::str_get_html($content, true, true, DEFAULT_TARGET_CHARSET, false);
-            $attachmentURL = $attachmentDOM->find('#pageContent div.datatable tbody tr a', 0)->href;
+            $attachmentURL = null;
+            $attachmentsDOM = HtmlDomParser::str_get_html($content, true, true, DEFAULT_TARGET_CHARSET, false);
+            foreach ($attachmentsDOM->find('#pageContent div.datatable tbody tr') as $attachmentDOM) {
+                if(filled($attachmentDOM->find('a', 0)) && trim($attachmentDOM->find('td', 1)->plaintext == 'English')) {
+                    $attachmentURL = $attachmentDOM->find('a', 0)->href;
+                    break;
+                }
+            }
+            if(blank($attachmentURL)) {
+                $firstAttachmentDOM = $attachmentsDOM->find('#pageContent div.datatable tbody tr a', 0);
+                if(filled($firstAttachmentDOM)) {
+                    $attachmentURL = $firstAttachmentDOM->href;
+                } else {
+                    $this->line("\n  <bg=red;fg=white> Exception </> : <fg=yellow>Statement is not available.</>\n");
+                    return false;
+                }
+            }
             $url = $this->globalizeCodeForcesURL($attachmentURL);
             $response = $this->getCodeForcesResponse($url);
             $contentType = $response->headers['content-type'];
