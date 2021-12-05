@@ -234,6 +234,9 @@ class Crawler extends CrawlerBase
             $imageResponse = $this->getCodeForcesResponse($url);
             $extensions = ['image/jpeg' => '.jpg', 'image/png' => '.png', 'image/gif' => '.gif', 'image/bmp' => '.bmp'];
             if (isset($imageResponse->headers['content-type'])) {
+                if(!isset($extensions[$imageResponse->headers['content-type']])) {
+                    continue; // image illegal
+                }
                 $extension = $extensions[$imageResponse->headers['content-type']];
             } else {
                 $extension = pathinfo($imageElement->src, PATHINFO_EXTENSION);
